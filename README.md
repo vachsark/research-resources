@@ -53,6 +53,27 @@ df = pl.scan_csv('data.csv').filter(pl.col('qty') > 0).collect()
 
 ---
 
+## What's Covered
+
+The full guide includes 12 sections:
+
+1. **Profile Before You Optimize** — find the actual bottleneck
+2. **Eliminate Python Loops** — vectorization (the #1 fix)
+3. **Optimize Data Types** — memory reduction with dtypes
+4. **Efficient File I/O** — Parquet, chunked reading
+5. **Faster Libraries** — Polars, Numba, cuML
+6. **Optimization-Specific Tips** — SciPy, CVXPY, incremental learning
+7. **Google Colab Tips** — GPU, Drive caching, RAM limits
+8. **Quick Wins Checklist** — actionable steps
+9. **Dask** — parallel processing for larger-than-RAM data
+10. **Feature Engineering at Scale** — encoding strategies for high-cardinality data
+11. **Visualization at Scale** — plotting 10K+ points without freezing
+12. **Common Pitfalls** — mistakes that silently kill performance
+
+Plus a curated **Further Reading** section with links to official docs, tutorials, and tools.
+
+---
+
 ## Contributing
 
 Have a topic you'd like covered? Open an issue or PR.

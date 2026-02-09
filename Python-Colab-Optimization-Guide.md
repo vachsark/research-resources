@@ -250,4 +250,192 @@ else:
 
 ---
 
-*Generated 2026-02-08*
+## 9. Dask — Parallel Processing Without Leaving Python
+
+Dask scales pandas-like code across multiple cores. Good middle ground when pandas is too slow but you don't want to learn a new API.
+
+```python
+!pip install dask[dataframe]
+import dask.dataframe as dd
+
+# Reads in parallel, lazy by default
+ddf = dd.read_csv('big_file.csv')
+
+# Familiar pandas-like API
+result = (
+    ddf.groupby('category')['revenue']
+    .sum()
+    .compute()  # Triggers execution
+)
+```
+
+### When to Use Dask vs Polars
+
+| | Dask | Polars |
+|---|------|--------|
+| **API** | Nearly identical to pandas | Similar but different |
+| **Best for** | Datasets larger than RAM | Fast single-machine processing |
+| **Parallelism** | Multi-core + can scale to clusters | Multi-core, automatic |
+| **Learning curve** | Minimal if you know pandas | Small but worth it |
+| **Ecosystem** | Works with scikit-learn (`dask-ml`) | Growing, some gaps |
+
+**Rule of thumb**: Try Polars first (faster, simpler). Use Dask if you need pandas compatibility or cluster scaling.
+
+---
+
+## 10. Feature Engineering at Scale
+
+If training models on product data with many variables, feature engineering is often the bottleneck.
+
+### Handle High-Cardinality Categoricals
+
+```python
+# Bad: One-hot encoding 10,000 product IDs = 10,000 new columns
+# pd.get_dummies(df['product_id'])  # Will explode memory
+
+# Good: Target encoding (replaces category with mean of target)
+!pip install category_encoders
+from category_encoders import TargetEncoder
+
+encoder = TargetEncoder(cols=['product_id', 'supplier'])
+X_train = encoder.fit_transform(X_train, y_train)
+X_test = encoder.transform(X_test)
+```
+
+### Efficient Encoding Strategies
+
+| Strategy | When to Use | Memory Impact |
+|----------|-------------|---------------|
+| **Target encoding** | High-cardinality (1000+ categories) | Low |
+| **Frequency encoding** | When count matters (popular products) | Low |
+| **One-hot encoding** | Low-cardinality only (< 20 categories) | High |
+| **Hashing trick** | Very high cardinality, quick and dirty | Fixed |
+| **Embeddings** | If using neural networks | Low |
+
+```python
+# Frequency encoding — simple and effective
+freq = df['product_id'].value_counts(normalize=True)
+df['product_freq'] = df['product_id'].map(freq)
+
+# Hashing trick — fixed memory regardless of cardinality
+from sklearn.feature_extraction import FeatureHasher
+hasher = FeatureHasher(n_features=128, input_type='string')
+hashed = hasher.transform(df['product_id'].values.reshape(-1, 1))
+```
+
+### Batch Feature Generation
+
+```python
+# Generate features in chunks to avoid memory spikes
+def generate_features(chunk):
+    chunk['price_per_unit'] = chunk['price'] / chunk['quantity'].clip(lower=1)
+    chunk['log_revenue'] = np.log1p(chunk['revenue'])
+    chunk['price_bucket'] = pd.cut(chunk['price'], bins=10, labels=False)
+    return chunk
+
+chunks = [generate_features(c) for c in pd.read_csv('data.csv', chunksize=10_000)]
+df = pd.concat(chunks)
+```
+
+---
+
+## 11. Visualization at Scale
+
+Plotting 10K+ points in Colab can freeze the browser. Use the right tool for the job.
+
+### Matplotlib — Downsample First
+
+```python
+import matplotlib.pyplot as plt
+
+# Don't plot all points — sample or aggregate
+sample = df.sample(n=5000) if len(df) > 5000 else df
+plt.scatter(sample['x'], sample['y'], alpha=0.3, s=5)
+plt.show()
+```
+
+### Plotly — Interactive but Watch the Size
+
+```python
+!pip install plotly
+import plotly.express as px
+
+# Use WebGL renderer for large datasets
+fig = px.scatter(
+    df.sample(10_000),
+    x='price', y='revenue',
+    color='category',
+    render_mode='webgl'  # Key for performance
+)
+fig.show()
+```
+
+### Datashader — Millions of Points, No Problem
+
+```python
+!pip install datashader holoviews bokeh
+import datashader as ds
+import datashader.transfer_functions as tf
+
+canvas = ds.Canvas(plot_width=800, plot_height=600)
+agg = canvas.points(df, 'x', 'y')
+img = tf.shade(agg)
+img
+```
+
+### Which Tool When
+
+| Points | Tool | Notes |
+|--------|------|-------|
+| < 5K | Matplotlib / Seaborn | Fine as-is |
+| 5K–50K | Plotly with `webgl` | Interactive, reasonable speed |
+| 50K–1M | Datashader | Renders any size instantly |
+| Any | Aggregated plots (histograms, box plots) | Always fast |
+
+---
+
+## 12. Common Pitfalls
+
+Mistakes that silently kill performance:
+
+| Pitfall | Why It's Slow | Fix |
+|---------|---------------|-----|
+| `df.apply(lambda x: ...)` on every row | Still a Python loop under the hood | Use vectorized operations |
+| Copying DataFrames unnecessarily | `df2 = df` doesn't copy, but `df.copy()` does — know when you need it | Use `inplace=True` or chain operations |
+| String operations in loops | Python strings are slow | Use `df['col'].str.method()` |
+| Not using `.values` or `.to_numpy()` | Pandas Series has overhead vs raw arrays | Extract NumPy arrays for math-heavy code |
+| Loading full dataset to filter it | Reads everything into memory first | Use `chunksize` or Polars `scan_csv` with `.filter()` |
+| Repeated `.groupby()` calls | Each one scans the data | Combine into one groupby with `.agg()` |
+| Ignoring index | Unindexed lookups are O(n) | `.set_index()` on frequently queried columns |
+
+---
+
+## Further Reading and Resources
+
+### Official Documentation
+- [Pandas: Enhancing Performance](https://pandas.pydata.org/docs/user_guide/enhancingperf.html) — official optimization guide
+- [Polars User Guide](https://docs.pola.rs/) — getting started with Polars
+- [NumPy for Beginners](https://numpy.org/doc/stable/user/absolute_beginners.html) — vectorization fundamentals
+- [Numba Documentation](https://numba.readthedocs.io/) — JIT compilation for Python
+- [Dask Documentation](https://docs.dask.org/) — parallel computing in Python
+- [Google Colab FAQ](https://research.google.com/colaboratory/faq.html) — resource limits and tips
+
+### Optimization and ML at Scale
+- [Scikit-learn: Scaling Strategies](https://scikit-learn.org/stable/computing/scaling_strategies.html) — incremental learning, out-of-core
+- [CVXPY Documentation](https://www.cvxpy.org/) — convex optimization in Python
+- [SciPy Optimize](https://docs.scipy.org/doc/scipy/reference/optimize.html) — optimization algorithms
+- [Category Encoders](https://contrib.scikit-learn.org/category_encoders/) — encoding strategies for categorical data
+- [RAPIDS cuDF](https://docs.rapids.ai/api/cudf/stable/) — GPU-accelerated DataFrames
+
+### Visualization
+- [Datashader Documentation](https://datashader.org/) — rendering billions of points
+- [Plotly Python](https://plotly.com/python/) — interactive plotting with WebGL support
+
+### Tutorials and Articles
+- [Real Python: Fast, Flexible, Easy and Intuitive — Pandas](https://realpython.com/fast-flexible-pandas/) — practical pandas optimization
+- [Towards Data Science: Speed Up Pandas](https://towardsdatascience.com/speed-up-your-pandas-processing/) — common speedup patterns
+- [Jake VanderPlas: Why Python Is Slow](https://jakevdp.github.io/blog/2014/05/09/why-python-is-slow/) — understanding the fundamentals
+
+---
+
+*Generated 2026-02-08 | Contributions welcome — open a PR or issue.*
